@@ -295,13 +295,12 @@ class LocationRepository {
 class PhotoRepository {
   static const String _cloudName = 'dbmpz3ap2';
   static const String _uploadPreset = 'seguridad_reportes';
-  static const String _folder = 'reports';
 
-  Future<String> uploadPhoto(File imageFile) async {
+  Future<String> uploadPhoto(File imageFile, {String folder = 'reports'}) async {
     final uri = Uri.parse('https://api.cloudinary.com/v1_1/$_cloudName/image/upload');
     final request = http.MultipartRequest('POST', uri)
       ..fields['upload_preset'] = _uploadPreset
-      ..fields['folder'] = _folder
+      ..fields['folder'] = folder
       ..files.add(await http.MultipartFile.fromPath('file', imageFile.path));
 
     final response = await request.send();
@@ -311,5 +310,9 @@ class PhotoRepository {
     final body = await response.stream.bytesToString();
     final json = jsonDecode(body) as Map<String, dynamic>;
     return json['secure_url'] as String;
+  }
+
+  Future<String> uploadProfilePhoto(File imageFile) {
+    return uploadPhoto(imageFile, folder: 'profile_photos');
   }
 }

@@ -9,23 +9,27 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+    
+  # ── Internacionalización ────────────────────────────────────────────────────
+  flutter_localizations:
+    sdk: flutter
 
   # ── Firebase ──────────────────────────────────────────────────────────────
-  firebase_core: ^2.27.0
-  firebase_auth: ^4.17.0
-  cloud_firestore: ^4.15.0
-  firebase_storage: ^11.6.0
+  firebase_core: ^4.11.0
+  firebase_auth: ^6.5.4
+  cloud_firestore: ^6.6.0
+  firebase_storage: ^13.4.3
 
   # ── Estado ────────────────────────────────────────────────────────────────
   provider: ^6.1.2
 
   # ── Mapa ──────────────────────────────────────────────────────────────────
-  flutter_map: ^6.1.0
+  flutter_map: ^8.3.0
   latlong2: ^0.9.0
 
   # ── Ubicación ─────────────────────────────────────────────────────────────
-  geolocator: ^11.0.0
-  geocoding: ^3.0.0
+  geolocator: ^14.0.3
+  geocoding: ^4.0.0
 
   # ── Imágenes ──────────────────────────────────────────────────────────────
   image_picker: ^1.0.7
@@ -35,19 +39,20 @@ dependencies:
   http: ^1.2.1
 
   # ── Utilidades ────────────────────────────────────────────────────────────
-  intl: ^0.19.0
+  intl: ^0.20.2
   url_launcher: ^6.2.5
-  vibration: ^1.8.4
-  permission_handler: ^11.3.0
+  vibration: ^3.2.0
+  permission_handler: ^12.0.3
   shared_preferences: ^2.2.3
 
   # ── UI ────────────────────────────────────────────────────────────────────
-  google_fonts: ^6.2.1
+  google_fonts: ^8.1.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.0
+  flutter_lints: ^6.0.0
 
 flutter:
   uses-material-design: true
+  generate: true   # habilita flutter gen-l10n a partir de l10n.yaml

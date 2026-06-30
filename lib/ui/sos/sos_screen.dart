@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import 'package:vibration/vibration.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/theme/theme_colors_x.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../providers/providers.dart';
 import '../sos/sos_contacts_screen.dart';
 
@@ -16,14 +18,12 @@ class SosScreen extends StatefulWidget {
 }
 
 class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
-  // Hold logic
   static const _holdMs = 3000;
   bool _pressing = false;
   double _progress = 0.0;
   Timer? _holdTimer;
   DateTime? _pressStart;
 
-  // Animations
   late AnimationController _pulseCtrl;
   late Animation<double> _pulseAnim;
   late AnimationController _rotCtrl;
@@ -37,6 +37,11 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
       CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
     _rotCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 10))
       ..repeat();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final uid = context.read<AuthProvider>().user?.uid;
+      if (uid != null) context.read<SosProvider>().loadContacts(uid);
+    });
   }
 
   @override
@@ -47,7 +52,6 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  // ── Hold press handlers ────────────────────────────────────────
   void _onPressStart() {
     final sos = context.read<SosProvider>();
     if (sos.active) { _cancelSos(); return; }
@@ -71,21 +75,86 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
   Future<void> _activateSos() async {
     setState(() { _pressing = false; _progress = 0.0; });
     final user = context.read<AuthProvider>().user;
-    await context.read<SosProvider>().activateSos(
+    final sos = context.read<SosProvider>();
+
+    if (sos.contacts.isEmpty) {
+      final goConfig = await _confirmNoContacts();
+      if (goConfig == true) {
+        if (mounted) {
+          Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const SosContactsScreen()));
+        }
+        return;
+      }
+    }
+
+    await sos.activateSos(
       userId:    user?.uid   ?? 'anonymous',
       userName:  user?.fullName ?? '',
       userPhone: user?.phone  ?? '',
     );
     _vibrateEmergency();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('🚨 ALERTA SOS ACTIVADA'),
-          backgroundColor: AppColors.primary,
-          duration: Duration(seconds: 4),
-        ),
-      );
+
+    if (!mounted) return;
+    final t = AppLocalizations.of(context)!;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(t.sosActivated),
+        backgroundColor: AppColors.primary,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+
+    await _waitForSendAndShowSummary();
+  }
+
+  Future<bool?> _confirmNoContacts() {
+    final t = AppLocalizations.of(context)!;
+    return showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: context.colors.cardBg,
+        title: Text(t.sosNoContactsTitle, style: TextStyle(color: context.colors.textPrimary, fontSize: 16)),
+        content: Text(t.sosNoContactsBody, style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(t.sosContinueAnyway, style: TextStyle(color: context.colors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(t.sosAddContacts, style: const TextStyle(color: AppColors.primary)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _waitForSendAndShowSummary() async {
+    final sos = context.read<SosProvider>();
+    var guard = 0;
+    while (sos.sendingMessages && guard < 40) {
+      await Future.delayed(const Duration(milliseconds: 250));
+      guard++;
     }
+    if (!mounted) return;
+    final t = AppLocalizations.of(context)!;
+    final results = sos.lastSendResults;
+    if (results.isEmpty) return;
+
+    final sent = results.where((r) => r.success).length;
+    final total = results.length;
+    final message = sent == total
+        ? t.sosSentToAll(sent.toString(), sent == 1 ? '' : 's')
+        : t.sosSentPartial(sent.toString(), total.toString());
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: sent == total ? AppColors.success : AppColors.warn,
+        duration: const Duration(seconds: 4),
+      ),
+    );
   }
 
   Future<void> _cancelSos() async {
@@ -94,16 +163,15 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
     _pulseCtrl.value = 0;
     _pulseCtrl.repeat(reverse: true);
     if (mounted) {
+      final t = AppLocalizations.of(context)!;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Alerta SOS cancelada'),
-            backgroundColor: AppColors.success),
+        SnackBar(content: Text(t.sosCancelled), backgroundColor: AppColors.success),
       );
     }
   }
 
   Future<void> _vibrateEmergency() async {
     if (await Vibration.hasVibrator() ?? false) {
-      // SOS Morse: ... --- ...
       Vibration.vibrate(
         pattern: [0,200,100,200,100,200,100,500,100,500,100,500,100,200,100,200,100,200],
         intensities: [0,255,0,255,0,255,0,255,0,255,0,255,0,255,0,255,0,255],
@@ -118,6 +186,7 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
     final sos = context.watch<SosProvider>();
     return Scaffold(
       body: SafeArea(
@@ -126,21 +195,17 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
           child: Column(
             children: [
               const SizedBox(height: 8),
-              const Text('Alerta de emergencia',
-                  style: TextStyle(color: AppColors.textPrimary,
+              Text(t.sosTitle,
+                  style: TextStyle(color: context.colors.textPrimary,
                       fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
               Text(
-                sos.active
-                    ? 'Tocá el botón para cancelar'
-                    : 'Mantené presionado 3 segundos',
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                sos.active ? t.sosTapToCancel : t.sosHoldInstruction,
+                style: TextStyle(color: context.colors.textSecondary, fontSize: 12),
               ),
               const SizedBox(height: 24),
-              // SOS Button
               _buildSosButton(sos.active),
               const SizedBox(height: 6),
-              // Progress bar
               if (!sos.active)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 60),
@@ -149,53 +214,63 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
                     child: LinearProgressIndicator(
                       value: _progress,
                       minHeight: 4,
-                      backgroundColor: AppColors.borderColor,
+                      backgroundColor: context.colors.borderColor,
                       valueColor: const AlwaysStoppedAnimation(AppColors.primary),
                     ),
                   ),
                 ),
+              if (sos.sendingMessages)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const SizedBox(width: 12, height: 12,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.warn)),
+                      const SizedBox(width: 8),
+                      Text(t.sosSendingMessages, style: const TextStyle(color: AppColors.warn, fontSize: 11)),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 20),
-              // Info cards
               Row(
                 children: [
-                  _InfoCard(label: 'Ubicación', value: '📍', sublabel: 'GPS activo'),
+                  _InfoCard(label: t.sosLocation, value: '📍', sublabel: t.sosGpsActive),
                   const SizedBox(width: 8),
-                  _InfoCard(label: 'GPS', value: 'ON',
-                      valueColor: AppColors.success, sublabel: 'Online'),
+                  _InfoCard(label: 'GPS', value: t.sosGpsOn,
+                      valueColor: AppColors.success, sublabel: t.sosOnline),
                   const SizedBox(width: 8),
-                  _InfoCard(label: 'Contactos', value: '2', sublabel: 'SOS'),
+                  _InfoCard(label: t.sosContacts, value: '${sos.contacts.length}', sublabel: 'SOS'),
                 ],
               ),
               const SizedBox(height: 14),
-              // SOS info box
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: AppColors.sosInfoBg,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.22)),
+                  border: Border.all(color: AppColors.primary.withOpacity(0.22)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('¿Qué hace el SOS?',
-                        style: TextStyle(color: AppColors.secondary,
+                    Text(t.sosInfoTitle,
+                        style: const TextStyle(color: AppColors.secondary,
                             fontSize: 12, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 8),
-                    ...const [
-                      'Envía tu ubicación en tiempo real',
-                      'Notifica a tus contactos de emergencia',
-                      'Activa vibración de alerta',
-                      'Crea un reporte automático en la app',
-                    ].map((t) => Padding(
+                    ...[
+                      t.sosInfoLocation,
+                      t.sosInfoNotify,
+                      t.sosInfoVibration,
+                      t.sosInfoReport,
+                    ].map((txt) => Padding(
                       padding: const EdgeInsets.only(bottom: 4),
                       child: Row(
                         children: [
                           const Icon(Icons.check, color: AppColors.success, size: 14),
                           const SizedBox(width: 8),
-                          Text(t, style: const TextStyle(
-                              color: AppColors.textSecondary, fontSize: 12)),
+                          Text(txt, style: TextStyle(color: context.colors.textSecondary, fontSize: 10)),
                         ],
                       ),
                     )),
@@ -203,23 +278,21 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
                 ),
               ),
               const SizedBox(height: 14),
-              // Status
               Text(
-                sos.active ? 'Estado: ALERTA ACTIVA' : 'Estado: Inactivo',
+                sos.active ? t.sosStatusActive : t.sosStatusInactive,
                 style: TextStyle(
-                  color: sos.active ? AppColors.primary : AppColors.textSecondary,
+                  color: sos.active ? AppColors.primary : context.colors.textSecondary,
                   fontSize: 14,
                   fontWeight: sos.active ? FontWeight.bold : FontWeight.normal,
                 ),
               ),
               const SizedBox(height: 14),
-              // Action buttons
               Row(
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
                       icon: const Icon(Icons.phone, size: 16),
-                      label: const Text('Llamar 911'),
+                      label: Text(t.sosCall911),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.primary,
                         side: const BorderSide(color: AppColors.primary, width: 0.5),
@@ -232,14 +305,20 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
                   Expanded(
                     child: OutlinedButton.icon(
                       icon: const Icon(Icons.contacts, size: 16),
-                      label: const Text('Contactos SOS'),
+                      label: Text(t.sosManageContacts),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.textSecondary,
-                        side: const BorderSide(color: AppColors.borderColor, width: 0.5),
+                        foregroundColor: context.colors.textSecondary,
+                        side: BorderSide(color: context.colors.borderColor, width: 0.5),
                         minimumSize: const Size(0, 44),
                       ),
-                      onPressed: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const SosContactsScreen())),
+                      onPressed: () async {
+                        await Navigator.push(context,
+                            MaterialPageRoute(builder: (_) => const SosContactsScreen()));
+                        final uid = context.read<AuthProvider>().user?.uid;
+                        if (uid != null && mounted) {
+                          context.read<SosProvider>().loadContacts(uid);
+                        }
+                      },
                     ),
                   ),
                 ],
@@ -264,7 +343,6 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // Rotating dashed ring
                 Transform.rotate(
                   angle: _rotCtrl.value * 2 * math.pi,
                   child: Container(
@@ -273,32 +351,30 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
                       shape: BoxShape.circle,
                       border: Border.all(
                         color: active
-                            ? AppColors.primary.withValues(alpha: 0.5)
-                            : AppColors.primary.withValues(alpha: 0.18),
+                            ? AppColors.primary.withOpacity(0.5)
+                            : AppColors.primary.withOpacity(0.18),
                         width: 1,
                       ),
                     ),
                   ),
                 ),
-                // Outer ring (solid)
                 Container(
                   width: 172, height: 172,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
                       color: active
-                          ? AppColors.primary.withValues(alpha: 0.6)
-                          : AppColors.primary.withValues(alpha: 0.25),
+                          ? AppColors.primary.withOpacity(0.6)
+                          : AppColors.primary.withOpacity(0.25),
                       width: 2,
                     ),
                     boxShadow: active
                         ? [BoxShadow(
-                            color: AppColors.primary.withValues(alpha: 0.3),
+                            color: AppColors.primary.withOpacity(0.3),
                             blurRadius: 24, spreadRadius: 4)]
                         : null,
                   ),
                 ),
-                // Core button
                 Transform.scale(
                   scale: active ? _pulseAnim.value : (_pressing ? 0.93 : 1.0),
                   child: Container(
@@ -314,7 +390,7 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.primary.withValues(alpha: active ? 0.6 : 0.4),
+                          color: AppColors.primary.withOpacity(active ? 0.6 : 0.4),
                           blurRadius: active ? 32 : 20,
                         ),
                       ],
@@ -338,7 +414,6 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
                     ),
                   ),
                 ),
-                // Progress arc overlay while pressing
                 if (_pressing && !active)
                   CustomPaint(
                     size: const Size(172, 172),
@@ -353,7 +428,6 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
   }
 }
 
-// ── Progress arc ──────────────────────────────────────────────
 class _ArcPainter extends CustomPainter {
   final double progress;
   const _ArcPainter(this.progress);
@@ -378,7 +452,6 @@ class _ArcPainter extends CustomPainter {
   bool shouldRepaint(covariant _ArcPainter old) => old.progress != progress;
 }
 
-// ── Info card ─────────────────────────────────────────────────
 class _InfoCard extends StatelessWidget {
   final String label, value;
   final String? sublabel;
@@ -391,22 +464,20 @@ class _InfoCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
-          color: AppColors.cardBg,
+          color: context.colors.cardBg,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.borderColor, width: 0.5),
+          border: Border.all(color: context.colors.borderColor, width: 0.5),
         ),
         child: Column(
           children: [
             Text(value,
                 style: TextStyle(
-                    color: valueColor ?? AppColors.textPrimary,
+                    color: valueColor ?? context.colors.textPrimary,
                     fontSize: 15, fontWeight: FontWeight.w600)),
             const SizedBox(height: 2),
-            Text(label,
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 9)),
+            Text(label, style: TextStyle(color: context.colors.textSecondary, fontSize: 9)),
             if (sublabel != null)
-              Text(sublabel!,
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 8)),
+              Text(sublabel!, style: TextStyle(color: context.colors.textSecondary, fontSize: 8)),
           ],
         ),
       ),

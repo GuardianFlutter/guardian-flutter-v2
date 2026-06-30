@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../data/models/models.dart';
 import '../data/repositories/repositories.dart';
-import 'dart:io';
+import '../data/repositories/sos_contact_repository.dart';
+import '../services/messaging_service.dart';
 
 // ═══════════════════════════════════════════════════════════════
 // AUTH PROVIDER
@@ -83,6 +85,25 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  /// Actualiza solo la foto de perfil (sin pasar por el AuthState de
+  /// loading/error general, para no bloquear el resto de la UI de
+  /// Editar Perfil mientras se sube la imagen — eso lo maneja la
+  /// propia pantalla con su spinner local).
+  Future<bool> updatePhotoUrl(String photoUrl) async {
+    final user = _user;
+    if (user == null) return false;
+    try {
+      final updated = user.copyWith(photoUrl: photoUrl);
+      await _repo.updateUser(updated);
+      _user = updated;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      return false;
+    }
+  }
+
   void logout() {
     _repo.logout();
     _user = null;
@@ -116,6 +137,12 @@ class ReportProvider extends ChangeNotifier {
   List<ReportModel> get userReports => _userReports;
   bool get loading => _loading;
   String? get error => _error;
+
+  ReportModel? get mostRecentReport =>
+      _reports.isNotEmpty ? _reports.first : null;
+
+  List<ReportModel> reportsByType(String type) =>
+      _reports.where((r) => r.type == type).toList();
 
   Future<void> loadReports() async {
     _loading = true;
@@ -200,15 +227,64 @@ class ReportProvider extends ChangeNotifier {
 class SosProvider extends ChangeNotifier {
   final _repo = SosRepository();
   final _locationRepo = LocationRepository();
+  final _contactRepo = SosContactRepository();
+  final _messaging = MessagingService();
 
   bool _active = false;
   bool _loading = false;
+  bool _sendingMessages = false;
   String? _activeAlertId;
   String? _error;
 
+  List<SosContact> _contacts = [];
+  List<MessageSendResult> _lastSendResults = [];
+
   bool get active => _active;
   bool get loading => _loading;
+  bool get sendingMessages => _sendingMessages;
   String? get error => _error;
+  List<SosContact> get contacts => _contacts;
+  List<MessageSendResult> get lastSendResults => _lastSendResults;
+
+  Future<void> loadContacts(String uid) async {
+    try {
+      _contacts = await _contactRepo.getContacts(uid);
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString().replaceAll('Exception: ', '');
+      notifyListeners();
+    }
+  }
+
+  Future<void> addContact(String uid, SosContact contact) async {
+    // el modelo SosContact ya incluye ownerUid
+    final contactWithOwner = SosContact(
+      id: contact.id,
+      ownerUid: uid,
+      name: contact.name,
+      phone: contact.phone,
+      relation: contact.relation,
+    );
+    await _contactRepo.addContact(contactWithOwner);
+    await loadContacts(uid);
+  }
+
+  Future<void> updateContact(String uid, SosContact contact) async {
+    final contactWithOwner = SosContact(
+      id: contact.id,
+      ownerUid: uid,
+      name: contact.name,
+      phone: contact.phone,
+      relation: contact.relation,
+    );
+    await _contactRepo.updateContact(contactWithOwner);
+    await loadContacts(uid);
+  }
+
+  Future<void> deleteContact(String contactId, String uid) async {
+    await _contactRepo.deleteContact(contactId);
+    await loadContacts(uid);
+  }
 
   Future<bool> activateSos({
     required String userId,
@@ -239,6 +315,15 @@ class SosProvider extends ChangeNotifier {
       _active = true;
       _loading = false;
       notifyListeners();
+
+      await _notifyContacts(
+        userId: userId,
+        userName: userName,
+        latitude: lat,
+        longitude: lon,
+        address: address,
+      );
+
       return true;
     } catch (e) {
       _error = e.toString().replaceAll('Exception: ', '');
@@ -248,6 +333,37 @@ class SosProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> _notifyContacts({
+    required String userId,
+    required String userName,
+    required double latitude,
+    required double longitude,
+    required String address,
+  }) async {
+    if (_contacts.isEmpty) {
+      await loadContacts(userId);
+    }
+    if (_contacts.isEmpty) return;
+
+    _sendingMessages = true;
+    notifyListeners();
+
+    final message = _messaging.buildSosMessage(
+      userName: userName,
+      latitude: latitude,
+      longitude: longitude,
+      address: address,
+    );
+
+    _lastSendResults = await _messaging.sendSosToAll(
+      contacts: _contacts,
+      message: message,
+    );
+
+    _sendingMessages = false;
+    notifyListeners();
+  }
+
   Future<void> cancelSos() async {
     final id = _activeAlertId;
     if (id != null) {
@@ -255,6 +371,7 @@ class SosProvider extends ChangeNotifier {
     }
     _active = false;
     _activeAlertId = null;
+    _lastSendResults = [];
     notifyListeners();
   }
 }

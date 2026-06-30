@@ -1,24 +1,11 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/theme/theme_colors_x.dart';
+import '../../data/repositories/sos_contact_repository.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../providers/providers.dart';
 import '../auth/splash_screen.dart' show GradientButton;
-
-class SosContact {
-  final String id, name, phone, relation;
-  const SosContact({required this.id, required this.name,
-      required this.phone, required this.relation});
-
-  factory SosContact.fromMap(String id, Map<String, dynamic> m) => SosContact(
-    id: id,
-    name: m['name'] as String? ?? '',
-    phone: m['phone'] as String? ?? '',
-    relation: m['relation'] as String? ?? '',
-  );
-
-  Map<String, dynamic> toMap() => {'name': name, 'phone': phone, 'relation': relation};
-}
 
 class SosContactsScreen extends StatefulWidget {
   const SosContactsScreen({super.key});
@@ -28,31 +15,32 @@ class SosContactsScreen extends StatefulWidget {
 }
 
 class _SosContactsScreenState extends State<SosContactsScreen> {
-  late CollectionReference _col;
   bool _loading = true;
-  List<SosContact> _contacts = [];
 
   @override
   void initState() {
     super.initState();
-    final uid = context.read<AuthProvider>().user?.uid ?? 'anon';
-    _col = FirebaseFirestore.instance.collection('sos_contacts').doc(uid).collection('contacts');
     _load();
   }
 
+  String? get _uid => context.read<AuthProvider>().user?.uid;
+
   Future<void> _load() async {
+    final uid = _uid;
+    if (uid == null) { setState(() => _loading = false); return; }
     setState(() => _loading = true);
-    final snap = await _col.get();
-    _contacts = snap.docs.map((d) => SosContact.fromMap(d.id, d.data() as Map<String, dynamic>)).toList();
+    await context.read<SosProvider>().loadContacts(uid);
     setState(() => _loading = false);
   }
 
   Future<void> _delete(String id) async {
-    await _col.doc(id).delete();
-    await _load();
+    final uid = _uid;
+    if (uid == null) return;
+    await context.read<SosProvider>().deleteContact(uid, id);
   }
 
   void _showForm([SosContact? contact]) {
+    final t = AppLocalizations.of(context)!;
     final nameCtrl   = TextEditingController(text: contact?.name ?? '');
     final phoneCtrl  = TextEditingController(text: contact?.phone ?? '');
     final relCtrl    = TextEditingController(text: contact?.relation ?? '');
@@ -62,7 +50,7 @@ class _SosContactsScreenState extends State<SosContactsScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.cardBg,
+      backgroundColor: context.colors.cardBg,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (ctx) => Padding(
@@ -74,48 +62,61 @@ class _SosContactsScreenState extends State<SosContactsScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(contact == null ? 'Agregar contacto SOS' : 'Editar contacto',
-                  style: const TextStyle(color: AppColors.textPrimary,
+              Text(contact == null ? t.sosContactsAddTitle : t.sosContactsEditTitle,
+                  style: TextStyle(color: context.colors.textPrimary,
                       fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              Text(t.sosContactsHint,
+                  style: TextStyle(color: context.colors.textSecondary, fontSize: 11)),
               const SizedBox(height: 16),
               TextFormField(
                 controller: nameCtrl,
-                style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
-                decoration: const InputDecoration(labelText: 'Nombre'),
-                validator: (v) => (v == null || v.isEmpty) ? 'Requerido' : null,
+                style: TextStyle(color: context.colors.textPrimary, fontSize: 13),
+                decoration: InputDecoration(labelText: t.sosContactsName),
+                validator: (v) => (v == null || v.isEmpty) ? t.sosContactsNameRequired : null,
               ),
               const SizedBox(height: 10),
               TextFormField(
                 controller: phoneCtrl,
                 keyboardType: TextInputType.phone,
-                style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
-                decoration: const InputDecoration(labelText: 'Teléfono'),
-                validator: (v) => (v == null || v.length < 8) ? 'Teléfono inválido' : null,
+                style: TextStyle(color: context.colors.textPrimary, fontSize: 13),
+                decoration: InputDecoration(labelText: t.sosContactsPhone),
+                validator: (v) => (v == null || v.length < 8) ? t.sosContactsPhoneInvalid : null,
               ),
               const SizedBox(height: 10),
               TextFormField(
                 controller: relCtrl,
-                style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
-                decoration: const InputDecoration(labelText: 'Relación (mamá, papá…)'),
+                style: TextStyle(color: context.colors.textPrimary, fontSize: 13),
+                decoration: InputDecoration(labelText: t.sosContactsRelation),
               ),
               const SizedBox(height: 20),
               StatefulBuilder(builder: (ctx2, setInner) => GradientButton(
-                label: contact == null ? 'Guardar contacto' : 'Actualizar',
+                label: contact == null ? t.sosContactsSave : t.sosContactsUpdate,
                 loading: saving,
                 onPressed: () async {
                   if (!formKey.currentState!.validate()) return;
+                  final uid = _uid;
+                  if (uid == null) return;
                   setInner(() => saving = true);
-                  final data = {
-                    'name': nameCtrl.text.trim(),
-                    'phone': phoneCtrl.text.trim(),
-                    'relation': relCtrl.text.trim(),
-                  };
+                  final sos = context.read<SosProvider>();
                   if (contact == null) {
-                    await _col.add(data);
+                    await sos.addContact(uid, SosContact(
+                      id: '',
+                      ownerUid: uid,
+                      name: nameCtrl.text.trim(),
+                      phone: phoneCtrl.text.trim(),
+                      relation: relCtrl.text.trim(),
+                    ));
                   } else {
-                    await _col.doc(contact.id).update(data);
+                    await sos.updateContact(uid, SosContact(
+                      id: contact.id,
+                      ownerUid: uid,
+                      name: nameCtrl.text.trim(),
+                      phone: phoneCtrl.text.trim(),
+                      relation: relCtrl.text.trim(),
+                    ));
                   }
-                  if (mounted) { Navigator.pop(ctx); await _load(); }
+                  if (mounted) Navigator.pop(ctx);
                 },
               )),
             ],
@@ -127,9 +128,11 @@ class _SosContactsScreenState extends State<SosContactsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
+    final contacts = context.watch<SosProvider>().contacts;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Contactos SOS'),
+        title: Text(t.sosContactsTitle),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
@@ -143,34 +146,43 @@ class _SosContactsScreenState extends State<SosContactsScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-          : _contacts.isEmpty
+          : contacts.isEmpty
               ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.people_outline, color: AppColors.borderColor, size: 56),
+                      Icon(Icons.people_outline, color: context.colors.borderColor, size: 56),
                       const SizedBox(height: 12),
-                      const Text('No tenés contactos SOS',
-                          style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+                      Text(t.sosContactsEmpty,
+                          style: TextStyle(color: context.colors.textSecondary, fontSize: 14)),
+                      const SizedBox(height: 4),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 40),
+                        child: Text(
+                          t.sosContactsEmptyHint,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: context.colors.textSecondary, fontSize: 11),
+                        ),
+                      ),
                       const SizedBox(height: 16),
                       ElevatedButton(
                         onPressed: () => _showForm(),
-                        child: const Text('Agregar contacto'),
+                        child: Text(t.sosContactsAddButton),
                       ),
                     ],
                   ),
                 )
               : ListView.builder(
                   padding: const EdgeInsets.all(16),
-                  itemCount: _contacts.length,
+                  itemCount: contacts.length,
                   itemBuilder: (_, i) {
-                    final c = _contacts[i];
+                    final c = contacts[i];
                     return Container(
                       margin: const EdgeInsets.only(bottom: 8),
                       decoration: BoxDecoration(
-                        color: AppColors.cardBg,
+                        color: context.colors.cardBg,
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppColors.borderColor, width: 0.5),
+                        border: Border.all(color: context.colors.borderColor, width: 0.5),
                       ),
                       child: ListTile(
                         leading: CircleAvatar(
@@ -181,16 +193,16 @@ class _SosContactsScreenState extends State<SosContactsScreen> {
                           ),
                         ),
                         title: Text(c.name,
-                            style: const TextStyle(color: AppColors.textPrimary, fontSize: 14)),
+                            style: TextStyle(color: context.colors.textPrimary, fontSize: 14)),
                         subtitle: Text(
                           '${c.phone}${c.relation.isNotEmpty ? ' · ${c.relation}' : ''}',
-                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                          style: TextStyle(color: context.colors.textSecondary, fontSize: 12),
                         ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
-                              icon: const Icon(Icons.edit, color: AppColors.textSecondary, size: 18),
+                              icon: Icon(Icons.edit, color: context.colors.textSecondary, size: 18),
                               onPressed: () => _showForm(c),
                             ),
                             IconButton(
@@ -199,18 +211,17 @@ class _SosContactsScreenState extends State<SosContactsScreen> {
                                 final ok = await showDialog<bool>(
                                   context: context,
                                   builder: (_) => AlertDialog(
-                                    backgroundColor: AppColors.cardBg,
-                                    title: const Text('Eliminar contacto',
-                                        style: TextStyle(color: AppColors.textPrimary)),
-                                    content: Text('¿Eliminar a ${c.name}?',
-                                        style: const TextStyle(color: AppColors.textSecondary)),
+                                    backgroundColor: context.colors.cardBg,
+                                    title: Text(t.sosContactsDeleteTitle,
+                                        style: TextStyle(color: context.colors.textPrimary)),
+                                    content: Text(t.sosContactsDeleteConfirm(c.name),
+                                        style: TextStyle(color: context.colors.textSecondary)),
                                     actions: [
                                       TextButton(onPressed: () => Navigator.pop(context, false),
-                                          child: const Text('Cancelar')),
+                                          child: Text(t.cancel)),
                                       TextButton(
                                         onPressed: () => Navigator.pop(context, true),
-                                        child: const Text('Eliminar',
-                                            style: TextStyle(color: AppColors.error)),
+                                        child: Text(t.delete, style: const TextStyle(color: AppColors.error)),
                                       ),
                                     ],
                                   ),

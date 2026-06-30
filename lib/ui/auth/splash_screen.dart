@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../providers/providers.dart';
 import '../main_screen.dart';
 import 'login_screen.dart';
@@ -40,13 +41,14 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: AppColors.bgDarker,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _GuardianShield(size: 80),
+            const GuardianShield(size: 80),
             const SizedBox(height: 20),
             RichText(
               text: const TextSpan(
@@ -57,10 +59,10 @@ class _SplashScreenState extends State<SplashScreen> {
               ),
             ),
             const SizedBox(height: 10),
-            const Text(
-              'Seguridad ciudadana\ninteligente y colaborativa',
+            Text(
+              t.appTagline,
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.7),
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.7),
             ),
             const SizedBox(height: 48),
             const SizedBox(
@@ -77,9 +79,13 @@ class _SplashScreenState extends State<SplashScreen> {
 // ═══════════════════════════════════════════════════════════════
 // SHARED WIDGETS
 // ═══════════════════════════════════════════════════════════════
-class _GuardianShield extends StatelessWidget {
+// Nota: se renombró _GuardianShield -> GuardianShield (público) para
+// poder importarlo desde login_screen.dart sin warnings de Dart por
+// usar un símbolo privado fuera de su archivo (antes funcionaba "por
+// suerte" porque estaba en el mismo paquete, pero no es buena práctica).
+class GuardianShield extends StatelessWidget {
   final double size;
-  const _GuardianShield({required this.size});
+  const GuardianShield({super.key, required this.size});
 
   @override
   Widget build(BuildContext context) {
@@ -94,7 +100,6 @@ class _ShieldPainter extends CustomPainter {
     final w = size.width;
     final h = size.height;
 
-    // Shield shape (simplified)
     final shieldPath = Path()
       ..moveTo(w * 0.5, h * 0.06)
       ..lineTo(w * 0.125, h * 0.21)
@@ -112,7 +117,6 @@ class _ShieldPainter extends CustomPainter {
     paint.shader = gradient;
     canvas.drawPath(shieldPath, paint);
 
-    // Checkmark
     final checkPaint = Paint()
       ..color = Colors.white
       ..strokeWidth = w * 0.055
@@ -161,7 +165,7 @@ class GradientButton extends StatelessWidget {
                   begin: Alignment.centerLeft,
                   end: Alignment.centerRight,
                 ),
-          color: onPressed == null ? AppColors.primary.withValues(alpha: 0.4) : null,
+          color: onPressed == null ? AppColors.primary.withOpacity(0.4) : null,
           borderRadius: BorderRadius.circular(12),
         ),
         child: ElevatedButton(

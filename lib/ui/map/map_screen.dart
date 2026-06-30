@@ -1,12 +1,15 @@
+import 'dart:async' as _async;
 import 'dart:math' as math;
-import 'dart:async' as _;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/theme/theme_colors_x.dart';
 import '../../data/models/models.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../providers/providers.dart';
 
 class MapScreen extends StatefulWidget {
@@ -25,7 +28,7 @@ class _MapScreenState extends State<MapScreen> {
   LatLng? _userLocation;
   bool _locationLoading = false;
   final Set<String> _alertedIds = {};
-  StreamSubscription<Position>? _positionSub;
+  _async.StreamSubscription<Position>? _positionSub;
 
   @override
   void initState() {
@@ -59,7 +62,6 @@ class _MapScreenState extends State<MapScreen> {
         setState(() { _userLocation = gp; _locationLoading = false; });
         _mapController.move(gp, 16);
       }
-      // continuous updates
       _positionSub = Geolocator.getPositionStream(
         locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 20),
       ).listen((p) {
@@ -75,6 +77,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _checkProximity(LatLng userGp) {
+    final t = AppLocalizations.of(context)!;
     final reports = context.read<ReportProvider>().reports;
     for (final r in reports) {
       if (r.latitude == 0 && r.longitude == 0) continue;
@@ -84,7 +87,7 @@ class _MapScreenState extends State<MapScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('⚠ ${r.title} a ${dist.toInt()}m de vos'),
+              content: Text(t.mapProximityAlert(r.title, dist.toInt().toString())),
               backgroundColor: AppColors.primary,
               duration: const Duration(seconds: 4),
             ),
@@ -117,7 +120,9 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
     final reports = context.watch<ReportProvider>().reports;
+    final user = context.watch<AuthProvider>().user;
 
     // Build markers
     final markers = <Marker>[];
@@ -134,19 +139,15 @@ class _MapScreenState extends State<MapScreen> {
         ),
       );
     }
-    // User location marker
+    // User location marker — ahora muestra su foto de perfil si tiene una
     if (_userLocation != null) {
       markers.add(
         Marker(
           point: _userLocation!,
-          width: 24, height: 24,
-          child: Container(
-            decoration: BoxDecoration(
-              color: AppColors.success,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2),
-              boxShadow: [BoxShadow(color: AppColors.success.withValues(alpha: 0.5), blurRadius: 8)],
-            ),
+          width: 40, height: 40,
+          child: _UserLocationMarker(
+            photoUrl: user?.photoUrl,
+            initials: user?.getInitials() ?? '',
           ),
         ),
       );
@@ -185,13 +186,13 @@ class _MapScreenState extends State<MapScreen> {
           Positioned(
             top: 0, left: 0, right: 0,
             child: Container(
-              color: AppColors.bgDark.withValues(alpha: 0.92),
+              color: context.colors.bg.withOpacity(0.92),
               padding: const EdgeInsets.fromLTRB(16, 52, 16, 12),
               child: Row(
                 children: [
-                  const Expanded(
-                    child: Text('Mapa en vivo',
-                        style: TextStyle(color: AppColors.textPrimary,
+                  Expanded(
+                    child: Text(t.mapTitle,
+                        style: TextStyle(color: context.colors.textPrimary,
                             fontSize: 18, fontWeight: FontWeight.bold)),
                   ),
                   Container(
@@ -199,8 +200,7 @@ class _MapScreenState extends State<MapScreen> {
                     decoration: const BoxDecoration(color: AppColors.success, shape: BoxShape.circle),
                   ),
                   const SizedBox(width: 5),
-                  const Text('Tiempo real',
-                      style: TextStyle(color: AppColors.success, fontSize: 12)),
+                  Text(t.mapRealtime, style: const TextStyle(color: AppColors.success, fontSize: 12)),
                 ],
               ),
             ),
@@ -209,24 +209,22 @@ class _MapScreenState extends State<MapScreen> {
           Positioned(
             bottom: 0, left: 0, right: 0,
             child: Container(
-              color: AppColors.bgDark.withValues(alpha: 0.95),
+              color: context.colors.bg.withOpacity(0.95),
               padding: const EdgeInsets.all(12),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Legend
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      _LegendDot(color: AppColors.primary, label: 'Robo'),
+                      _LegendDot(color: AppColors.primary, label: t.mapLegendRobo),
                       const SizedBox(width: 16),
-                      _LegendDot(color: AppColors.secondary, label: 'Violencia'),
+                      _LegendDot(color: AppColors.secondary, label: t.mapLegendViolencia),
                       const SizedBox(width: 16),
-                      _LegendDot(color: AppColors.warn, label: 'Zona'),
+                      _LegendDot(color: AppColors.warn, label: t.mapLegendZona),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  // Incident cards
                   ...nearestReports.map((r) {
                     final dist = _userLocation != null
                         ? _haversineM(_userLocation!, LatLng(r.latitude, r.longitude)).toInt()
@@ -242,7 +240,7 @@ class _MapScreenState extends State<MapScreen> {
             right: 16,
             bottom: nearestReports.isEmpty ? 80 : 160,
             child: FloatingActionButton.small(
-              backgroundColor: AppColors.cardBg,
+              backgroundColor: context.colors.cardBg,
               onPressed: () {
                 if (_userLocation != null) {
                   _mapController.move(_userLocation!, 16);
@@ -264,7 +262,7 @@ class _MapScreenState extends State<MapScreen> {
   void _showReportCard(ReportModel report) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.cardBg,
+      backgroundColor: context.colors.cardBg,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (_) => Padding(
@@ -277,23 +275,68 @@ class _MapScreenState extends State<MapScreen> {
                 style: const TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
             Text(report.title,
-                style: const TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
+                style: TextStyle(color: context.colors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
             Text(report.description,
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
             const SizedBox(height: 10),
             Row(
               children: [
                 const Icon(Icons.location_on, color: AppColors.primary, size: 14),
                 const SizedBox(width: 4),
                 Expanded(child: Text(report.address,
-                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12))),
+                    style: TextStyle(color: context.colors.textSecondary, fontSize: 12))),
               ],
             ),
             const SizedBox(height: 16),
           ],
         ),
       ),
+    );
+  }
+}
+
+// ── User location marker (con foto de perfil) ──────────────────
+class _UserLocationMarker extends StatelessWidget {
+  final String? photoUrl;
+  final String initials;
+  const _UserLocationMarker({this.photoUrl, required this.initials});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasPhoto = photoUrl != null && photoUrl!.isNotEmpty;
+    return Container(
+      width: 40, height: 40,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: hasPhoto ? null : AppColors.success,
+        gradient: hasPhoto ? const LinearGradient(
+          colors: [AppColors.primary, AppColors.secondary],
+        ) : null,
+        border: Border.all(color: Colors.white, width: 2.5),
+        boxShadow: [BoxShadow(color: AppColors.success.withOpacity(0.5), blurRadius: 8)],
+      ),
+      child: hasPhoto
+          ? ClipOval(
+              child: CachedNetworkImage(
+                imageUrl: photoUrl!,
+                fit: BoxFit.cover,
+                width: 40, height: 40,
+                placeholder: (_, __) => const Center(
+                  child: SizedBox(width: 14, height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white)),
+                ),
+                errorWidget: (_, __, ___) => Center(
+                  child: Text(initials,
+                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            )
+          : Center(
+              child: initials.isNotEmpty
+                  ? Text(initials, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold))
+                  : const Icon(Icons.person, color: Colors.white, size: 18),
+            ),
     );
   }
 }
@@ -313,7 +356,7 @@ class _PinWidget extends StatelessWidget {
             color: color,
             shape: BoxShape.circle,
             border: Border.all(color: Colors.white, width: 2),
-            boxShadow: [BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 6)],
+            boxShadow: [BoxShadow(color: color.withOpacity(0.5), blurRadius: 6)],
           ),
           child: const Icon(Icons.circle, size: 8, color: Colors.white),
         ),
@@ -357,7 +400,7 @@ class _LegendDot extends StatelessWidget {
       children: [
         Container(width: 7, height: 7, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
         const SizedBox(width: 4),
-        Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+        Text(label, style: TextStyle(color: context.colors.textSecondary, fontSize: 11)),
       ],
     );
   }
@@ -370,13 +413,14 @@ class _IncidentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.cardBg,
+        color: context.colors.cardBg,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.borderColor, width: 0.5),
+        border: Border.all(color: context.colors.borderColor, width: 0.5),
       ),
       child: Row(
         children: [
@@ -394,19 +438,19 @@ class _IncidentCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(report.title,
-                    style: const TextStyle(color: AppColors.textPrimary,
+                    style: TextStyle(color: context.colors.textPrimary,
                         fontSize: 14, fontWeight: FontWeight.bold)),
                 Text(
                   distanceM != null
                       ? 'A ${distanceM}m · ${report.address.length > 25 ? report.address.substring(0, 25) : report.address}'
                       : report.address,
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                  style: TextStyle(color: context.colors.textSecondary, fontSize: 11),
                 ),
               ],
             ),
           ),
           Text(
-            distanceM != null && distanceM! < 300 ? 'Activo' : 'Vigente',
+            distanceM != null && distanceM! < 300 ? t.mapActive : t.mapOngoing,
             style: TextStyle(
               color: distanceM != null && distanceM! < 300 ? AppColors.primary : AppColors.warn,
               fontSize: 12,
@@ -418,5 +462,3 @@ class _IncidentCard extends StatelessWidget {
     );
   }
 }
-
-typedef StreamSubscription<T> = _.StreamSubscription<T>;
