@@ -1,12 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
 
-// ═══════════════════════════════════════════════════════════════
-// SOS CONTACT MODEL
-// ═══════════════════════════════════════════════════════════════
+
 class SosContact {
   final String id;
   final String ownerUid;
   final String name;
+  final String email;
   final String phone;
   final String relation;
 
@@ -14,6 +14,7 @@ class SosContact {
     required this.id,
     required this.ownerUid,
     required this.name,
+    required this.email,
     required this.phone,
     required this.relation,
   });
@@ -22,6 +23,7 @@ class SosContact {
         id: id,
         ownerUid: m['ownerUid'] as String? ?? '',
         name: m['name'] as String? ?? '',
+        email: m['email'] as String? ?? '',
         phone: m['phone'] as String? ?? '',
         relation: m['relation'] as String? ?? '',
       );
@@ -29,6 +31,7 @@ class SosContact {
   Map<String, dynamic> toMap() => {
         'ownerUid': ownerUid,
         'name': name,
+        'email': email,
         'phone': phone,
         'relation': relation,
       };

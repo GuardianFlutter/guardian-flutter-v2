@@ -91,6 +91,7 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
     await sos.activateSos(
       userId:    user?.uid   ?? 'anonymous',
       userName:  user?.fullName ?? '',
+      userEmail: user?.email ?? '',
       userPhone: user?.phone  ?? '',
     );
     _vibrateEmergency();

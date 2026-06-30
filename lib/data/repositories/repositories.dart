@@ -93,6 +93,10 @@ class AuthRepository {
     }
   }
 
+  Future<String?> getIdToken() async{
+    return _auth.currentUser?.getIdToken();
+  }
+
   void logout() => _auth.signOut();
 
   bool get isLoggedIn => _auth.currentUser != null;
@@ -200,6 +204,7 @@ class SosRepository {
   Future<String> activateSos({
     required String userId,
     required String userName,
+    required String userEmail,
     required String userPhone,
     required double latitude,
     required double longitude,
@@ -211,6 +216,7 @@ class SosRepository {
       id: docRef.id,
       userId: userId,
       userName: userName,
+      userEmail: userEmail,
       userPhone: userPhone,
       latitude: latitude,
       longitude: longitude,

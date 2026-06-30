@@ -42,6 +42,7 @@ class _SosContactsScreenState extends State<SosContactsScreen> {
   void _showForm([SosContact? contact]) {
     final t = AppLocalizations.of(context)!;
     final nameCtrl   = TextEditingController(text: contact?.name ?? '');
+    final emailCtrl  = TextEditingController(text: contact?.email ?? ''); 
     final phoneCtrl  = TextEditingController(text: contact?.phone ?? '');
     final relCtrl    = TextEditingController(text: contact?.relation ?? '');
     final formKey    = GlobalKey<FormState>();
@@ -104,6 +105,7 @@ class _SosContactsScreenState extends State<SosContactsScreen> {
                       id: '',
                       ownerUid: uid,
                       name: nameCtrl.text.trim(),
+                      email: emailCtrl.text.trim(),
                       phone: phoneCtrl.text.trim(),
                       relation: relCtrl.text.trim(),
                     ));
@@ -112,6 +114,7 @@ class _SosContactsScreenState extends State<SosContactsScreen> {
                       id: contact.id,
                       ownerUid: uid,
                       name: nameCtrl.text.trim(),
+                      email: emailCtrl.text.trim(),
                       phone: phoneCtrl.text.trim(),
                       relation: relCtrl.text.trim(),
                     ));

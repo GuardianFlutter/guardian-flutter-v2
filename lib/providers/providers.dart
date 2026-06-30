@@ -1,10 +1,13 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/widgets.dart';
+import 'package:guardian/services/notification_services.dart';
 import '../data/models/models.dart';
 import '../data/repositories/repositories.dart';
 import '../data/repositories/sos_contact_repository.dart';
 import '../services/messaging_service.dart';
+import '../services/notification_services.dart';
 
 // ═══════════════════════════════════════════════════════════════
 // AUTH PROVIDER
@@ -262,6 +265,7 @@ class SosProvider extends ChangeNotifier {
       id: contact.id,
       ownerUid: uid,
       name: contact.name,
+      email: contact.email,
       phone: contact.phone,
       relation: contact.relation,
     );
@@ -274,6 +278,7 @@ class SosProvider extends ChangeNotifier {
       id: contact.id,
       ownerUid: uid,
       name: contact.name,
+      email: contact.email,
       phone: contact.phone,
       relation: contact.relation,
     );
@@ -289,6 +294,7 @@ class SosProvider extends ChangeNotifier {
   Future<bool> activateSos({
     required String userId,
     required String userName,
+    String userEmail = '',
     String userPhone = '',
   }) async {
     _loading = true;
@@ -307,6 +313,7 @@ class SosProvider extends ChangeNotifier {
       _activeAlertId = await _repo.activateSos(
         userId: userId,
         userName: userName,
+        userEmail: userEmail,
         userPhone: userPhone,
         latitude: lat,
         longitude: lon,
@@ -361,6 +368,29 @@ class SosProvider extends ChangeNotifier {
     );
 
     _sendingMessages = false;
+
+    try{
+      final authRepo = AuthRepository();
+      final token = await authRepo.getIdToken();
+      if(token != null){
+        final emailContacts = _contacts.where((c) => c.email.isNotEmpty).toList();
+        if(emailContacts.isNotEmpty){
+          await NotificationServices.sendSosEmail(
+            IdToken: token, 
+            userId: userId, 
+            userName: userName, 
+            address: address, 
+            latitude: latitude.toString(), 
+            longitude: longitude.toString(), 
+            recipients: emailContacts.map((c) => {
+              'email': c.email,
+              'name': c.name,
+              'phone': c.phone,
+              'relation': c.relation,
+            }).toList(),);
+        }
+      }
+    } catch(_){}
     notifyListeners();
   }
 

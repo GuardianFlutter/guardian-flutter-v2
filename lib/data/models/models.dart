@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:guardian/data/repositories/sos_contact_repository.dart';
 
 // ═══════════════════════════════════════════════════════════════
 // USER MODEL
@@ -201,6 +202,7 @@ class AlertModel {
   final Timestamp createdAt;
   final Timestamp? resolvedAt;
   final String userName;
+  final String userEmail;
   final String userPhone;
 
   const AlertModel({
@@ -215,6 +217,7 @@ class AlertModel {
     required this.createdAt,
     this.resolvedAt,
     this.userName = '',
+    this.userEmail = '',
     this.userPhone = '',
   });
 
@@ -229,6 +232,7 @@ class AlertModel {
     'createdAt': createdAt,
     'resolvedAt': resolvedAt,
     'userName': userName,
+    'userEmail': userEmail,
     'userPhone': userPhone,
   };
 
@@ -244,6 +248,7 @@ class AlertModel {
     createdAt: map['createdAt'] as Timestamp? ?? Timestamp.now(),
     resolvedAt: map['resolvedAt'] as Timestamp?,
     userName: map['userName'] as String? ?? '',
+    userEmail: map['userEmail' as String? ?? ''],
     userPhone: map['userPhone'] as String? ?? '',
   );
 }
