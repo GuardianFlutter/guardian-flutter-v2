@@ -4,7 +4,7 @@ import '../constants/app_colors.dart';
 
 class AppTheme {
   // ═══════════════════════════════════════════════════════════════
-  // DARK THEME (el original del proyecto)
+  // DARK THEME
   // ═══════════════════════════════════════════════════════════════
   static ThemeData get darkTheme {
     return ThemeData(

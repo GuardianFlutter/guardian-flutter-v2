@@ -60,7 +60,6 @@ class _MapScreenState extends State<MapScreen> {
       final gp  = LatLng(pos.latitude, pos.longitude);
       if (mounted) {
         setState(() { _userLocation = gp; _locationLoading = false; });
-        _mapController.move(gp, 16);
       }
       _positionSub = Geolocator.getPositionStream(
         locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 20),
@@ -153,6 +152,10 @@ class _MapScreenState extends State<MapScreen> {
       );
     }
 
+    if(_userLocation == null && _locationLoading){
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     // 2 nearest reports for cards
     List<ReportModel> nearestReports = [];
     if (_userLocation != null && reports.isNotEmpty) {
@@ -168,8 +171,8 @@ class _MapScreenState extends State<MapScreen> {
           // Map
           FlutterMap(
             mapController: _mapController,
-            options: const MapOptions(
-              initialCenter: _defaultCenter,
+            options: MapOptions(
+              initialCenter: _userLocation ?? _defaultCenter,
               initialZoom: 15,
               minZoom: 10,
               maxZoom: 19,

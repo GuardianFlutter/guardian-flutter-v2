@@ -79,10 +79,6 @@ class _SplashScreenState extends State<SplashScreen> {
 // ═══════════════════════════════════════════════════════════════
 // SHARED WIDGETS
 // ═══════════════════════════════════════════════════════════════
-// Nota: se renombró _GuardianShield -> GuardianShield (público) para
-// poder importarlo desde login_screen.dart sin warnings de Dart por
-// usar un símbolo privado fuera de su archivo (antes funcionaba "por
-// suerte" porque estaba en el mismo paquete, pero no es buena práctica).
 class GuardianShield extends StatelessWidget {
   final double size;
   const GuardianShield({super.key, required this.size});

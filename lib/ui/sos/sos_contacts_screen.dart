@@ -36,7 +36,7 @@ class _SosContactsScreenState extends State<SosContactsScreen> {
   Future<void> _delete(String id) async {
     final uid = _uid;
     if (uid == null) return;
-    await context.read<SosProvider>().deleteContact(uid, id);
+    await context.read<SosProvider>().deleteContact(id, uid);
   }
 
   void _showForm([SosContact? contact]) {
